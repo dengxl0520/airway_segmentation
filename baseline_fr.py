@@ -7,7 +7,8 @@ from models.model_mj_in3sadfr import UNet3D
 
 
 def get_model(args=None):
-	net = UNet3D(in_channels=1, out_channels=1, coord=True)
+	net = UNet3D(in_channels=1, out_channels=1, coord=True,\
+	             Dmax=args.cubesize[0], Hmax=args.cubesize[1], Wmax=args.cubesize[2])
 	print(net)
 	print('# of network parameters:', sum(param.numel() for param in net.parameters()))
 	return config, net
