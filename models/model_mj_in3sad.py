@@ -86,21 +86,16 @@ class UNet3D(nn.Module):
 			nn.ReLU(inplace=True))
 		
 		if self._coord:
-			self.conv9 = nn.Sequential(
-				nn.Conv3d(32 + 16 + 3, 16, 3, 1, 1),
-				nn.InstanceNorm3d(16),
-				nn.ReLU(inplace=True),
-				nn.Conv3d(16, 16, 3, 1, 1),
-				nn.InstanceNorm3d(16),
-				nn.ReLU(inplace=True))
+			num_channel_coord = 3
 		else:
-			self.conv9 = nn.Sequential(
-				nn.Conv3d(32 + 16, 16, 3, 1, 1),
-				nn.InstanceNorm3d(16),
-				nn.ReLU(inplace=True),
-				nn.Conv3d(16, 16, 3, 1, 1),
-				nn.InstanceNorm3d(16),
-				nn.ReLU(inplace=True))
+			num_channel_coord = 0
+		self.conv9 = nn.Sequential(
+			nn.Conv3d(32 + 16 + num_channel_coord, 16, 3, 1, 1),
+			nn.InstanceNorm3d(16),
+			nn.ReLU(inplace=True),
+			nn.Conv3d(16, 16, 3, 1, 1),
+			nn.InstanceNorm3d(16),
+			nn.ReLU(inplace=True))
 	
 		self.sigmoid = nn.Sigmoid()
 		self.conv10 = nn.Conv3d(16, self._out_channels, 1, 1, 0)
