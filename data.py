@@ -370,3 +370,339 @@ def augment(sample, label, coord=None, ifflip=True, ifswap=False, ifsmooth=False
 			sample = gaussian_filter(sample, sigma=1.0)
 
 	return sample, label, coord
+
+
+class BAS(AirwayData):
+	def __init__(self, config, phase='train', split_comber=None,
+				 debug=False, random_select=False) -> None:
+		"""
+		:param config: configuration from model
+		:param phase: training or validation or testing
+		:param split_comber: split-combination-er
+		:param debug: debug mode to check few data
+		:param random_select: use partly, randomly chosen data for training
+		"""
+		assert(phase == 'train' or phase == 'val' or phase == 'test')
+		self.phase = phase
+		self.augtype = config['augtype']
+		self.split_comber = split_comber
+		self.rand_sel = random_select
+		self.patch_per_case = 5  # patches used per case if random training
+		self.debug_flag = debug
+		"""
+		specify the path and data split
+		"""
+		self.datapath = config['dataset_path']
+		self.dataset = load_pickle(config['dataset_split'])
+		print("-------------------------Load all data into memory---------------------------")
+		"""
+		count the number of cases
+		"""
+		labellist = []
+		cubelist = []
+		self.caseNumber = 0
+		allimgdata_memory = {}
+		alllabeldata_memory = {}
+
+		if self.phase == 'train':
+			data_file_names = self.dataset['train']
+			file_num = len(data_file_names)
+			if self.debug_flag:
+				data_file_names = data_file_names[:6]
+				file_num = len(data_file_names)
+			self.caseNumber += file_num
+
+			print("total %s case number: %d"%(self.phase, self.caseNumber))
+
+			for raw_path in data_file_names:
+				raw_path = os.path.join(self.datapath, 'image', raw_path.split('/')[-1])
+				assert(os.path.exists(raw_path) is True)
+				label_path = os.path.join(self.datapath, 'label', raw_path.split('/')[-1])
+				assert (os.path.exists(label_path) is True)
+
+				imgs, origin, spacing = load_itk_image(raw_path)
+				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
+				data_name = raw_path.split('/')[-1].split('.nii.gz')[0]
+
+				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
+				labels, _, _ = load_itk_image(label_path)
+
+				allimgdata_memory[data_name] = [imgs, origin, spacing]
+				alllabeldata_memory[data_name] = labels
+				cube_train = []
+			
+				for j in range(len(splits)):
+					"""
+					check if this sub-volume cube is suitable
+					"""
+					cursplit = splits[j]
+					labelcube = labels[cursplit[0][0]:cursplit[0][1], cursplit[1][0]:cursplit[1][1], cursplit[2][0]:cursplit[2][1]]
+					curnumlabel = np.sum(labelcube)
+					labellist.append(curnumlabel)
+					if curnumlabel > 0:  # filter out those zero-0 labels
+						curlist = [data_name, cursplit, j, nzhw, orgshape, 'Y']
+						cube_train.append(curlist)
+				
+				random.shuffle(cube_train)
+
+				if self.rand_sel:
+					"""
+					only chooses random number of patches for training
+					"""
+					cubelist.append(cube_train)
+				else:
+					cubelist += cube_train
+
+		elif self.phase == 'val':
+			data_file_names = self.dataset['val']
+			file_num = len(data_file_names)
+			if self.debug_flag:
+				data_file_names = data_file_names[:2]
+				file_num = len(data_file_names)
+
+			self.caseNumber += file_num
+			print("total %s case number: %d"%(self.phase, self.caseNumber))
+
+			for raw_path in data_file_names:
+				raw_path = os.path.join(self.datapath, 'image', raw_path.split('/')[-1])
+				assert(os.path.exists(raw_path) is True)
+				label_path = os.path.join(self.datapath, 'label', raw_path.split('/')[-1])
+				assert (os.path.exists(label_path) is True)
+
+				imgs, origin, spacing = load_itk_image(raw_path)
+				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
+				data_name = raw_path.split('/')[-1].split('.nii.gz')[0]
+				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
+				labels, _, _ = load_itk_image(label_path)
+				
+				allimgdata_memory[data_name] = [imgs, origin, spacing]
+				alllabeldata_memory[data_name] = labels
+
+				for j in range(len(splits)):
+					cursplit = splits[j]
+					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
+					cubelist.append(curlist)
+
+		else:
+			data_file_names = self.dataset['test']
+			file_num = len(data_file_names)
+			if self.debug_flag:
+				data_file_names = data_file_names[:2]
+				file_num = len(data_file_names)
+
+			self.caseNumber += file_num
+			print("total %s case number: %d"%(self.phase, self.caseNumber))
+
+			for raw_path in data_file_names:
+				raw_path = os.path.join(self.datapath, 'image', raw_path.split('/')[-1])
+				assert(os.path.exists(raw_path) is True)
+				label_path = os.path.join(self.datapath, 'label', raw_path.split('/')[-1])
+				assert (os.path.exists(label_path) is True)
+
+				imgs, origin, spacing = load_itk_image(raw_path)
+				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
+				data_name = raw_path.split('/')[-1].split('.nii.gz')[0]
+				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
+				labels, _, _ = load_itk_image(label_path)
+
+				allimgdata_memory[data_name] = [imgs, origin, spacing]
+				alllabeldata_memory[data_name] = labels
+
+				for j in range(len(splits)):
+					"""
+					check if this cube is suitable
+					"""
+					cursplit = splits[j]
+					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
+					cubelist.append(curlist)
+
+		self.allimgdata_memory = allimgdata_memory
+		self.alllabeldata_memory = alllabeldata_memory
+
+		if self.rand_sel and self.phase == 'train':
+			assert (len(cubelist) == self.caseNumber)
+			mean_labelnum = np.mean(np.array(labellist))
+			print('mean label number: %d' % (mean_labelnum))
+			print('total patches: ', self.patch_per_case*self.caseNumber)
+
+		random.shuffle(cubelist)
+		self.cubelist = cubelist
+
+		print('---------------------Initialization Done---------------------')
+		print('Phase: %s total cubelist number: %d'%(self.phase, len(self.cubelist)))
+		print()
+
+
+class ATM(AirwayData):
+	def __init__(self, config, phase='train', split_comber=None,
+				 debug=False, random_select=False) -> None:
+		"""
+		:param config: configuration from model
+		:param phase: training or validation or testing
+		:param split_comber: split-combination-er
+		:param debug: debug mode to check few data
+		:param random_select: use partly, randomly chosen data for training
+		"""
+		assert(phase == 'train' or phase == 'val' or phase == 'test')
+		self.phase = phase
+		self.augtype = config['augtype']
+		self.split_comber = split_comber
+		self.rand_sel = random_select
+		self.patch_per_case = 5  # patches used per case if random training
+		self.debug_flag = debug
+		"""
+		specify the path and data split
+		"""
+		self.datapath = config['dataset_path']
+		self.dataset = load_pickle(config['dataset_split'])
+		print("-------------------------Load all data into memory---------------------------")
+		"""
+		count the number of cases
+		"""
+		labellist = []
+		cubelist = []
+		self.caseNumber = 0
+		allimgdata_memory = {}
+		alllabeldata_memory = {}
+
+		if self.phase == 'train':
+			data_file_names = self.dataset['train']
+			file_num = len(data_file_names)
+			if self.debug_flag:
+				data_file_names = data_file_names[:6]
+				file_num = len(data_file_names)
+			self.caseNumber += file_num
+
+			print("total %s case number: %d"%(self.phase, self.caseNumber))
+
+			for raw_path in data_file_names:
+				raw_path = os.path.join(self.datapath, 'imagesTr', raw_path.split('/')[-1])
+				assert(os.path.exists(raw_path) is True)
+				label_path = os.path.join(self.datapath, 'labelsTr', raw_path.split('/')[-1])
+				assert (os.path.exists(label_path) is True)
+
+				imgs, origin, spacing = load_itk_image(raw_path)
+				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
+				data_name = raw_path.split('/')[-1].split('.nii.gz')[0]
+
+				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
+				labels, _, _ = load_itk_image(label_path)
+
+				allimgdata_memory[data_name] = [imgs, origin, spacing]
+				alllabeldata_memory[data_name] = labels
+				cube_train = []
+			
+				for j in range(len(splits)):
+					"""
+					check if this sub-volume cube is suitable
+					"""
+					cursplit = splits[j]
+					labelcube = labels[cursplit[0][0]:cursplit[0][1], cursplit[1][0]:cursplit[1][1], cursplit[2][0]:cursplit[2][1]]
+					curnumlabel = np.sum(labelcube)
+					labellist.append(curnumlabel)
+					if curnumlabel > 0:  # filter out those zero-0 labels
+						curlist = [data_name, cursplit, j, nzhw, orgshape, 'Y']
+						cube_train.append(curlist)
+				
+				random.shuffle(cube_train)
+
+				if self.rand_sel:
+					"""
+					only chooses random number of patches for training
+					"""
+					cubelist.append(cube_train)
+				else:
+					cubelist += cube_train
+
+		elif self.phase == 'val':
+			data_file_names = self.dataset['val']
+			file_num = len(data_file_names)
+			if self.debug_flag:
+				data_file_names = data_file_names[:2]
+				file_num = len(data_file_names)
+
+			self.caseNumber += file_num
+			print("total %s case number: %d"%(self.phase, self.caseNumber))
+
+			for raw_path in data_file_names:
+				raw_path = os.path.join(self.datapath, 'imagesTr', raw_path.split('/')[-1])
+				assert(os.path.exists(raw_path) is True)
+				label_path = os.path.join(self.datapath, 'labelsTr', raw_path.split('/')[-1])
+				assert (os.path.exists(label_path) is True)
+
+				imgs, origin, spacing = load_itk_image(raw_path)
+				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
+				data_name = raw_path.split('/')[-1].split('.nii.gz')[0]
+				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
+				labels, _, _ = load_itk_image(label_path)
+				
+				allimgdata_memory[data_name] = [imgs, origin, spacing]
+				alllabeldata_memory[data_name] = labels
+
+				for j in range(len(splits)):
+					cursplit = splits[j]
+					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
+					cubelist.append(curlist)
+
+		else:
+			data_file_names = self.dataset['test']
+			file_num = len(data_file_names)
+			if self.debug_flag:
+				data_file_names = data_file_names[:2]
+				file_num = len(data_file_names)
+
+			self.caseNumber += file_num
+			print("total %s case number: %d"%(self.phase, self.caseNumber))
+
+			for raw_path in data_file_names:
+				raw_path = os.path.join(self.datapath, 'imagesTr', raw_path.split('/')[-1])
+				assert(os.path.exists(raw_path) is True)
+				label_path = os.path.join(self.datapath, 'labelsTr', raw_path.split('/')[-1])
+				assert (os.path.exists(label_path) is True)
+
+				imgs, origin, spacing = load_itk_image(raw_path)
+				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
+				data_name = raw_path.split('/')[-1].split('.nii.gz')[0]
+				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
+				labels, _, _ = load_itk_image(label_path)
+
+				allimgdata_memory[data_name] = [imgs, origin, spacing]
+				alllabeldata_memory[data_name] = labels
+
+				for j in range(len(splits)):
+					"""
+					check if this cube is suitable
+					"""
+					cursplit = splits[j]
+					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
+					cubelist.append(curlist)
+
+		self.allimgdata_memory = allimgdata_memory
+		self.alllabeldata_memory = alllabeldata_memory
+
+		if self.rand_sel and self.phase == 'train':
+			assert (len(cubelist) == self.caseNumber)
+			mean_labelnum = np.mean(np.array(labellist))
+			print('mean label number: %d' % (mean_labelnum))
+			print('total patches: ', self.patch_per_case*self.caseNumber)
+
+		random.shuffle(cubelist)
+		self.cubelist = cubelist
+
+		print('---------------------Initialization Done---------------------')
+		print('Phase: %s total cubelist number: %d'%(self.phase, len(self.cubelist)))
+		print()
+
+
+def choose_dataset(model, dataset='BAS'):
+	if dataset == 'BAS':
+		model.config['dataset_path'] = 'datasets/BAS'
+		model.config['dataset_split'] = 'datasets/BAS_dataset_split.pickle'
+		DatasetClass = BAS
+	elif dataset == 'ATM':
+		model.config['dataset_path'] = 'datasets/ATM'
+		model.config['dataset_split'] = 'datasets/ATM_dataset_split.pickle'
+		DatasetClass = ATM
+	else:
+		raise Exception('no found dataset.')
+	return model, DatasetClass

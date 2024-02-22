@@ -4,6 +4,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='PyTorch Airway Segmentation')
 parser.add_argument('--model', '-m', metavar='MODEL', default='baseline', help='model')
+parser.add_argument('--dataset', '-d', metavar='DATASET', default='BAS', help='dataset')
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
 					help='number of data loading workers (default: 8)')
 parser.add_argument('--epochs', default=None, type=int, metavar='N',

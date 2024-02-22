@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torch import optim
 import csv
 from option import parser
-
+from data import choose_dataset
 
 def main():
 	global args
@@ -26,6 +26,7 @@ def main():
 	# torch.cuda.set_device(0)
 	print('----------------------Load Model------------------------')
 	model = import_module(args.model)
+	model, DatasetClass = choose_dataset(model, args.dataset)
 	config, net = model.get_model(args)
 	start_epoch = args.start_epoch
 	save_dir = args.save_dir
@@ -88,7 +89,7 @@ def main():
 	if args.test:
 		print('---------------------testing---------------------')
 		split_comber = SplitComb(args.stridev, marginv)
-		dataset_test = data.AirwayData(
+		dataset_test = DatasetClass(
 			config,
 			phase='test',
 			split_comber=split_comber,
@@ -109,7 +110,7 @@ def main():
 		epoch = 1
 		print ('---------------------validation---------------------')
 		split_comber = SplitComb(args.stridev, marginv)
-		dataset_val = data.AirwayData(
+		dataset_val = DatasetClass(
 			config,
 			phase='val',
 			split_comber=split_comber,
@@ -130,7 +131,7 @@ def main():
 	print('train stride ', args.stridet)
 	split_comber = SplitComb(args.stridet, margin)
 
-	dataset_train = data.AirwayData(
+	dataset_train = DatasetClass(
 		config,
 		phase='train',
 		split_comber=split_comber,
@@ -148,7 +149,7 @@ def main():
 	split_comber = SplitComb(args.stridev, marginv)
 
 	# load validation dataset
-	dataset_val = data.AirwayData(
+	dataset_val = DatasetClass(
 		config,
 		phase='val',
 		split_comber=split_comber,
