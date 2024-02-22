@@ -401,8 +401,6 @@ class BAS(AirwayData):
 		labellist = []
 		cubelist = []
 		self.caseNumber = 0
-		allimgdata_memory = {}
-		alllabeldata_memory = {}
 
 		if self.phase == 'train':
 			data_file_names = self.dataset['train']
@@ -427,8 +425,6 @@ class BAS(AirwayData):
 				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
 				labels, _, _ = load_itk_image(label_path)
 
-				allimgdata_memory[data_name] = [imgs, origin, spacing]
-				alllabeldata_memory[data_name] = labels
 				cube_train = []
 			
 				for j in range(len(splits)):
@@ -475,9 +471,6 @@ class BAS(AirwayData):
 				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
 				labels, _, _ = load_itk_image(label_path)
 				
-				allimgdata_memory[data_name] = [imgs, origin, spacing]
-				alllabeldata_memory[data_name] = labels
-
 				for j in range(len(splits)):
 					cursplit = splits[j]
 					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
@@ -505,9 +498,6 @@ class BAS(AirwayData):
 				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
 				labels, _, _ = load_itk_image(label_path)
 
-				allimgdata_memory[data_name] = [imgs, origin, spacing]
-				alllabeldata_memory[data_name] = labels
-
 				for j in range(len(splits)):
 					"""
 					check if this cube is suitable
@@ -515,9 +505,6 @@ class BAS(AirwayData):
 					cursplit = splits[j]
 					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
 					cubelist.append(curlist)
-
-		self.allimgdata_memory = allimgdata_memory
-		self.alllabeldata_memory = alllabeldata_memory
 
 		if self.rand_sel and self.phase == 'train':
 			assert (len(cubelist) == self.caseNumber)
@@ -531,6 +518,92 @@ class BAS(AirwayData):
 		print('---------------------Initialization Done---------------------')
 		print('Phase: %s total cubelist number: %d'%(self.phase, len(self.cubelist)))
 		print()
+
+	def load_data(self, dataname):
+		raw_path = os.path.join(self.datapath, 'image', dataname + '.nii.gz')
+		assert(os.path.exists(raw_path) is True)
+		label_path = os.path.join(self.datapath, 'label', dataname + '.nii.gz')
+		assert (os.path.exists(label_path) is True)
+
+		imgs, origin, spacing = load_itk_image(raw_path)
+		labels, _, _ = load_itk_image(label_path)
+
+		return [imgs, origin, spacing], labels
+
+	def __getitem__(self, idx):
+		"""
+		:param idx: index of the batch
+		:return: wrapped data tensor and name, shape, origin, etc.
+		"""
+		t = time.time()
+		np.random.seed(int(str(t % 1)[2:7]))  # seed according to time
+		
+		if self.phase == 'train' and self.rand_sel:
+			caseID = idx // self.patch_per_case
+			caseSplit = self.cubelist[caseID]
+			np.random.shuffle(caseSplit)
+			curlist = caseSplit[0]
+		else:
+			curlist = self.cubelist[idx]
+
+		# train: [data_name, cursplit, j, nzhw, orgshape, 'Y']
+		# val/test: [data_name, cursplit, j, nzhw, orgshape, 'N']
+
+		curNameID = curlist[0]
+		cursplit = curlist[1]
+		curSplitID = curlist[2]
+		curnzhw = curlist[3]
+		curShapeOrg = curlist[4]
+		curtransFlag = curlist[5]
+
+		if self.phase == 'train' and curtransFlag == 'Y' and self.augtype['split_jitter'] is True:
+			# random jittering during the training
+			cursplit = augment_split_jittering(cursplit, curShapeOrg)
+
+		imginfo, label = self.load_data(curNameID)
+
+		####################################################################
+		imgs, origin, spacing = imginfo[0], imginfo[1], imginfo[2]
+		curcube = imgs[cursplit[0][0]:cursplit[0][1], cursplit[1][0]:cursplit[1][1], cursplit[2][0]:cursplit[2][1]]
+		curcube = (curcube.astype(np.float32))/255.0
+		####################################################################
+
+		# calculate the coordinate for coordinate-aware convolution
+		start = [float(cursplit[0][0]), float(cursplit[1][0]), float(cursplit[2][0])]
+		normstart = ((np.array(start).astype('float')/np.array(curShapeOrg).astype('float'))-0.5)*2.0
+		crop_size = [curcube.shape[0],curcube.shape[1],curcube.shape[2]]
+		stride = 1.0
+		normsize = (np.array(crop_size).astype('float')/np.array(curShapeOrg).astype('float'))*2.0
+		xx, yy, zz = np.meshgrid(np.linspace(normstart[0], normstart[0]+normsize[0], int(crop_size[0])),
+								 np.linspace(normstart[1], normstart[1]+normsize[1], int(crop_size[1])),
+								 np.linspace(normstart[2], normstart[2]+normsize[2], int(crop_size[2])),
+								 indexing ='ij')
+		coord = np.concatenate([xx[np.newaxis,...], yy[np.newaxis,...], zz[np.newaxis,...]], 0).astype('float')
+		assert (coord.shape[0] == 3)
+
+		label = (label > 0)
+		label = label.astype('float')
+		label = label[cursplit[0][0]:cursplit[0][1], cursplit[1][0]:cursplit[1][1], cursplit[2][0]:cursplit[2][1]]
+		####################################################################
+		curNameID = [curNameID]
+		curSplitID = [curSplitID]
+		curnzhw = np.array(curnzhw)
+		curShapeOrg = np.array(curShapeOrg)
+		#######################################################################
+		########################Data augmentation##############################
+
+		if self.phase == 'train' and curtransFlag == 'Y':
+			curcube, label, coord = augment(curcube, label, coord,
+											ifflip=self.augtype['flip'], ifswap=self.augtype['swap'],
+											ifsmooth=self.augtype['smooth'], ifjitter=self.augtype['jitter'])
+
+		curcube = curcube[np.newaxis,...]
+		label = label[np.newaxis,...]
+
+		return torch.from_numpy(curcube).float(),torch.from_numpy(label).float(),\
+			   torch.from_numpy(coord).float(),torch.from_numpy(origin),\
+			   torch.from_numpy(spacing), curNameID, curSplitID,\
+			   torch.from_numpy(curnzhw),torch.from_numpy(curShapeOrg)
 
 
 class ATM(AirwayData):
@@ -562,8 +635,6 @@ class ATM(AirwayData):
 		labellist = []
 		cubelist = []
 		self.caseNumber = 0
-		allimgdata_memory = {}
-		alllabeldata_memory = {}
 
 		if self.phase == 'train':
 			data_file_names = self.dataset['train']
@@ -588,8 +659,6 @@ class ATM(AirwayData):
 				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
 				labels, _, _ = load_itk_image(label_path)
 
-				allimgdata_memory[data_name] = [imgs, origin, spacing]
-				alllabeldata_memory[data_name] = labels
 				cube_train = []
 			
 				for j in range(len(splits)):
@@ -636,9 +705,6 @@ class ATM(AirwayData):
 				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
 				labels, _, _ = load_itk_image(label_path)
 				
-				allimgdata_memory[data_name] = [imgs, origin, spacing]
-				alllabeldata_memory[data_name] = labels
-
 				for j in range(len(splits)):
 					cursplit = splits[j]
 					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
@@ -666,9 +732,6 @@ class ATM(AirwayData):
 				print("Name: %s, # of splits: %d"%(data_name, len(splits)))
 				labels, _, _ = load_itk_image(label_path)
 
-				allimgdata_memory[data_name] = [imgs, origin, spacing]
-				alllabeldata_memory[data_name] = labels
-
 				for j in range(len(splits)):
 					"""
 					check if this cube is suitable
@@ -676,9 +739,6 @@ class ATM(AirwayData):
 					cursplit = splits[j]
 					curlist = [data_name, cursplit, j, nzhw, orgshape, 'N']
 					cubelist.append(curlist)
-
-		self.allimgdata_memory = allimgdata_memory
-		self.alllabeldata_memory = alllabeldata_memory
 
 		if self.rand_sel and self.phase == 'train':
 			assert (len(cubelist) == self.caseNumber)
@@ -692,6 +752,92 @@ class ATM(AirwayData):
 		print('---------------------Initialization Done---------------------')
 		print('Phase: %s total cubelist number: %d'%(self.phase, len(self.cubelist)))
 		print()
+
+	def load_data(self, dataname):
+		raw_path = os.path.join(self.datapath, 'imagesTr', dataname + '.nii.gz')
+		assert(os.path.exists(raw_path) is True)
+		label_path = os.path.join(self.datapath, 'labelsTr', dataname + '.nii.gz')
+		assert (os.path.exists(label_path) is True)
+
+		imgs, origin, spacing = load_itk_image(raw_path)
+		labels, _, _ = load_itk_image(label_path)
+
+		return [imgs, origin, spacing], labels
+
+	def __getitem__(self, idx):
+		"""
+		:param idx: index of the batch
+		:return: wrapped data tensor and name, shape, origin, etc.
+		"""
+		t = time.time()
+		np.random.seed(int(str(t % 1)[2:7]))  # seed according to time
+		
+		if self.phase == 'train' and self.rand_sel:
+			caseID = idx // self.patch_per_case
+			caseSplit = self.cubelist[caseID]
+			np.random.shuffle(caseSplit)
+			curlist = caseSplit[0]
+		else:
+			curlist = self.cubelist[idx]
+
+		# train: [data_name, cursplit, j, nzhw, orgshape, 'Y']
+		# val/test: [data_name, cursplit, j, nzhw, orgshape, 'N']
+
+		curNameID = curlist[0]
+		cursplit = curlist[1]
+		curSplitID = curlist[2]
+		curnzhw = curlist[3]
+		curShapeOrg = curlist[4]
+		curtransFlag = curlist[5]
+
+		if self.phase == 'train' and curtransFlag == 'Y' and self.augtype['split_jitter'] is True:
+			# random jittering during the training
+			cursplit = augment_split_jittering(cursplit, curShapeOrg)
+
+		imginfo, label = self.load_data(curNameID)
+
+		####################################################################
+		imgs, origin, spacing = imginfo[0], imginfo[1], imginfo[2]
+		curcube = imgs[cursplit[0][0]:cursplit[0][1], cursplit[1][0]:cursplit[1][1], cursplit[2][0]:cursplit[2][1]]
+		curcube = (curcube.astype(np.float32))/255.0
+		####################################################################
+
+		# calculate the coordinate for coordinate-aware convolution
+		start = [float(cursplit[0][0]), float(cursplit[1][0]), float(cursplit[2][0])]
+		normstart = ((np.array(start).astype('float')/np.array(curShapeOrg).astype('float'))-0.5)*2.0
+		crop_size = [curcube.shape[0],curcube.shape[1],curcube.shape[2]]
+		stride = 1.0
+		normsize = (np.array(crop_size).astype('float')/np.array(curShapeOrg).astype('float'))*2.0
+		xx, yy, zz = np.meshgrid(np.linspace(normstart[0], normstart[0]+normsize[0], int(crop_size[0])),
+								 np.linspace(normstart[1], normstart[1]+normsize[1], int(crop_size[1])),
+								 np.linspace(normstart[2], normstart[2]+normsize[2], int(crop_size[2])),
+								 indexing ='ij')
+		coord = np.concatenate([xx[np.newaxis,...], yy[np.newaxis,...], zz[np.newaxis,...]], 0).astype('float')
+		assert (coord.shape[0] == 3)
+
+		label = (label > 0)
+		label = label.astype('float')
+		label = label[cursplit[0][0]:cursplit[0][1], cursplit[1][0]:cursplit[1][1], cursplit[2][0]:cursplit[2][1]]
+		####################################################################
+		curNameID = [curNameID]
+		curSplitID = [curSplitID]
+		curnzhw = np.array(curnzhw)
+		curShapeOrg = np.array(curShapeOrg)
+		#######################################################################
+		########################Data augmentation##############################
+
+		if self.phase == 'train' and curtransFlag == 'Y':
+			curcube, label, coord = augment(curcube, label, coord,
+											ifflip=self.augtype['flip'], ifswap=self.augtype['swap'],
+											ifsmooth=self.augtype['smooth'], ifjitter=self.augtype['jitter'])
+
+		curcube = curcube[np.newaxis,...]
+		label = label[np.newaxis,...]
+
+		return torch.from_numpy(curcube).float(),torch.from_numpy(label).float(),\
+			   torch.from_numpy(coord).float(),torch.from_numpy(origin),\
+			   torch.from_numpy(spacing), curNameID, curSplitID,\
+			   torch.from_numpy(curnzhw),torch.from_numpy(curShapeOrg)
 
 
 def choose_dataset(model, dataset='BAS'):
