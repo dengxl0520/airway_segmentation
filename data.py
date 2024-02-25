@@ -414,9 +414,8 @@ class BAS(AirwayData):
 
 			for raw_path in data_file_names:
 				raw_path = os.path.join(self.datapath, 'image', raw_path.split('/')[-1])
-				assert(os.path.exists(raw_path) is True)
 				label_path = os.path.join(self.datapath, 'label', raw_path.split('/')[-1])
-				assert (os.path.exists(label_path) is True)
+				assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 				imgs, origin, spacing = load_itk_image(raw_path)
 				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
@@ -448,6 +447,8 @@ class BAS(AirwayData):
 					cubelist.append(cube_train)
 				else:
 					cubelist += cube_train
+			
+			random.shuffle(cubelist)
 
 		elif self.phase == 'val':
 			data_file_names = self.dataset['val']
@@ -461,9 +462,8 @@ class BAS(AirwayData):
 
 			for raw_path in data_file_names:
 				raw_path = os.path.join(self.datapath, 'image', raw_path.split('/')[-1])
-				assert(os.path.exists(raw_path) is True)
 				label_path = os.path.join(self.datapath, 'label', raw_path.split('/')[-1])
-				assert (os.path.exists(label_path) is True)
+				assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 				imgs, origin, spacing = load_itk_image(raw_path)
 				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
@@ -488,9 +488,8 @@ class BAS(AirwayData):
 
 			for raw_path in data_file_names:
 				raw_path = os.path.join(self.datapath, 'image', raw_path.split('/')[-1])
-				assert(os.path.exists(raw_path) is True)
 				label_path = os.path.join(self.datapath, 'label', raw_path.split('/')[-1])
-				assert (os.path.exists(label_path) is True)
+				assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 				imgs, origin, spacing = load_itk_image(raw_path)
 				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
@@ -512,7 +511,6 @@ class BAS(AirwayData):
 			print('mean label number: %d' % (mean_labelnum))
 			print('total patches: ', self.patch_per_case*self.caseNumber)
 
-		random.shuffle(cubelist)
 		self.cubelist = cubelist
 
 		print('---------------------Initialization Done---------------------')
@@ -521,9 +519,8 @@ class BAS(AirwayData):
 
 	def load_data(self, dataname):
 		raw_path = os.path.join(self.datapath, 'image', dataname + '.nii.gz')
-		assert(os.path.exists(raw_path) is True)
 		label_path = os.path.join(self.datapath, 'label', dataname + '.nii.gz')
-		assert (os.path.exists(label_path) is True)
+		assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 		imgs, origin, spacing = load_itk_image(raw_path)
 		labels, _, _ = load_itk_image(label_path)
@@ -648,9 +645,8 @@ class ATM(AirwayData):
 
 			for raw_path in data_file_names:
 				raw_path = os.path.join(self.datapath, 'imagesTr', raw_path.split('/')[-1])
-				assert(os.path.exists(raw_path) is True)
 				label_path = os.path.join(self.datapath, 'labelsTr', raw_path.split('/')[-1])
-				assert (os.path.exists(label_path) is True)
+				assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 				imgs, origin, spacing = load_itk_image(raw_path)
 				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
@@ -682,6 +678,8 @@ class ATM(AirwayData):
 					cubelist.append(cube_train)
 				else:
 					cubelist += cube_train
+			
+			random.shuffle(cubelist)
 
 		elif self.phase == 'val':
 			data_file_names = self.dataset['val']
@@ -695,9 +693,8 @@ class ATM(AirwayData):
 
 			for raw_path in data_file_names:
 				raw_path = os.path.join(self.datapath, 'imagesTr', raw_path.split('/')[-1])
-				assert(os.path.exists(raw_path) is True)
 				label_path = os.path.join(self.datapath, 'labelsTr', raw_path.split('/')[-1])
-				assert (os.path.exists(label_path) is True)
+				assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 				imgs, origin, spacing = load_itk_image(raw_path)
 				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
@@ -722,9 +719,8 @@ class ATM(AirwayData):
 
 			for raw_path in data_file_names:
 				raw_path = os.path.join(self.datapath, 'imagesTr', raw_path.split('/')[-1])
-				assert(os.path.exists(raw_path) is True)
 				label_path = os.path.join(self.datapath, 'labelsTr', raw_path.split('/')[-1])
-				assert (os.path.exists(label_path) is True)
+				assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 				imgs, origin, spacing = load_itk_image(raw_path)
 				splits, nzhw, orgshape = self.split_comber.split_id(imgs)
@@ -746,7 +742,6 @@ class ATM(AirwayData):
 			print('mean label number: %d' % (mean_labelnum))
 			print('total patches: ', self.patch_per_case*self.caseNumber)
 
-		random.shuffle(cubelist)
 		self.cubelist = cubelist
 
 		print('---------------------Initialization Done---------------------')
@@ -755,9 +750,8 @@ class ATM(AirwayData):
 
 	def load_data(self, dataname):
 		raw_path = os.path.join(self.datapath, 'imagesTr', dataname + '.nii.gz')
-		assert(os.path.exists(raw_path) is True)
 		label_path = os.path.join(self.datapath, 'labelsTr', dataname + '.nii.gz')
-		assert (os.path.exists(label_path) is True)
+		assert(os.path.exists(raw_path) is True and os.path.exists(label_path) is True)
 
 		imgs, origin, spacing = load_itk_image(raw_path)
 		labels, _, _ = load_itk_image(label_path)

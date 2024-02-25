@@ -55,7 +55,7 @@ parser.add_argument('--stridet', default=[48, 80, 80], nargs="*", type=int, meta
 					help='split stride train')
 parser.add_argument('--stridev', default=[48, 80, 80], nargs="*", type=int, metavar='stride',
 					help='split stride val')
-parser.add_argument('--multigpu', default=False, type=bool, metavar='mgpu',
+parser.add_argument('--multigpu', default=False, action='store_true',
 					help='use multiple gpus')
 
 

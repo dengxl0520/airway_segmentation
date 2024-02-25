@@ -185,6 +185,68 @@ def val_casenet(epoch, model, data_loader, args, save_dir, test_flag=False):
 
 	with torch.no_grad():
 		for i, (x, y, coord, org, spac, NameID, SplitID, nzhw, ShapeOrg) in enumerate(tqdm(data_loader)):
+			if len(list(x_total.keys())) > 0 and list(x_total.keys())[0] != NameID[0][0]:
+				curName = list(x_total.keys())[0]
+				cury = y_total[curName]
+				curp = p_total[curName]
+				# x_combine, xorigin, xspacing = combine_total(curx, sidelen, margin)
+				y_combine, curorigin, curspacing = combine_total(cury, sidelen, margin)
+				p_combine, porigin, pspacing = combine_total_avg(curp, sidelen, margin)
+				p_combine_bw = (p_combine > th_bin)
+				# curpath = os.path.join(valdir, '%s-case-org.nii.gz'%(curName))
+				curypath = os.path.join(valdir, '%s-case-gt.nii.gz'%(curName))
+				curpredpath = os.path.join(valdir, '%s-case-pred.nii.gz'%(curName))
+				# save_itk(x_combine.astype(dtype='uint8'), curorigin, curspacing, curpath)
+				save_itk(y_combine.astype(dtype='uint8'), curorigin, curspacing, curypath)
+				save_itk(p_combine_bw.astype(dtype='uint8'), curorigin, curspacing, curpredpath)
+
+				if args.featsave:
+					curf3 = feat3_total[curName]
+					curf4 = feat4_total[curName]
+					curf5 = feat5_total[curName]
+					curf6 = feat6_total[curName]
+					f3, forg, fspac = combine_total_avg(curf3, sidelen, margin)
+					f4, _, _ = combine_total_avg(curf4, sidelen, margin)
+					f5, _, _ = combine_total_avg(curf5, sidelen, margin)
+					f6, _, _ = combine_total_avg(curf6, sidelen, margin)
+					f3 = normalize_min_max(f3)*255
+					f4 = normalize_min_max(f4)*255
+					f5 = normalize_min_max(f5)*255
+					f6 = normalize_min_max(f6)*255
+					curf3path = os.path.join(valdir, '%s-case-f3.nii.gz'%(curName))
+					curf4path = os.path.join(valdir, '%s-case-f4.nii.gz'%(curName))
+					curf5path = os.path.join(valdir, '%s-case-f5.nii.gz'%(curName))
+					curf6path = os.path.join(valdir, '%s-case-f6.nii.gz'%(curName))
+					save_itk(f3.astype(dtype='uint8'), curorigin, curspacing, curf3path)
+					save_itk(f4.astype(dtype='uint8'), curorigin, curspacing, curf4path)
+					save_itk(f5.astype(dtype='uint8'), curorigin, curspacing, curf5path)
+					save_itk(f6.astype(dtype='uint8'), curorigin, curspacing, curf6path)
+
+				########################################################################
+				curdicehard = dice_coef_np(p_combine_bw, y_combine)
+				curdice = dice_coef_np(p_combine, y_combine)
+				curppv = ppv_np(p_combine_bw, y_combine)
+				cursensi = sensitivity_np(p_combine_bw, y_combine)
+				curacc = acc_np(p_combine_bw, y_combine)
+				########################################################################
+				dice_total.append(curdice)
+				ppv_total.append(curppv)
+				acc_total.append(curacc)
+				name_total.append(curName)
+				sensitivity_total.append(cursensi)
+				dice_hard_total.append(curdicehard)
+				# del cury, curp, y_combine, p_combine_bw, p_combine
+
+				# reset 
+				# del p_total, x_total, y_total, feat3_total, feat4_total, feat5_total, feat6_total
+				p_total = {}
+				x_total = {}
+				y_total = {}
+				feat3_total = {}
+				feat4_total = {}
+				feat5_total = {}
+				feat6_total = {}
+
 			######Wrap Tensor##########
 			NameID = NameID[0]
 			SplitID = SplitID[0] 
@@ -286,9 +348,7 @@ def val_casenet(epoch, model, data_loader, args, save_dir, test_flag=False):
 					feat5_total[curName].append(curf5info)
 					feat6_total[curName].append(curf6info)
 
-	# combine all the cases together
-	for curName in x_total.keys():
-		# curx = x_total[curName]
+		curName = list(x_total.keys())[0]
 		cury = y_total[curName]
 		curp = p_total[curName]
 		# x_combine, xorigin, xspacing = combine_total(curx, sidelen, margin)
@@ -337,12 +397,15 @@ def val_casenet(epoch, model, data_loader, args, save_dir, test_flag=False):
 		name_total.append(curName)
 		sensitivity_total.append(cursensi)
 		dice_hard_total.append(curdicehard)
-		del cury, curp, y_combine, p_combine_bw, p_combine
+		# del cury, curp, y_combine, p_combine_bw, p_combine
+
+		# reset 
+		# del p_total, x_total, y_total, feat3_total, feat4_total, feat5_total, feat6_total
 
 	endtime = time.time()
 	lossHist = np.array(lossHist)
 
-	all_results = {'lidc':[], 'exact09':[]}
+	all_results =[]
 
 	with open(os.path.join(valdir, 'val_results.csv'), 'w') as csvout:
 		writer = csv.writer(csvout)
@@ -350,39 +413,17 @@ def val_casenet(epoch, model, data_loader, args, save_dir, test_flag=False):
 		writer.writerow(row)
 
 		for i in range(len(name_total)):
-			name = name_total[i]
-			if len(name) > 20:
-				keyw = 'lidc'
-			elif name[0] == 'C':
-				keyw = 'exact09'
-
 			row = [name_total[i],float(round(acc_total[i]*100,3)),float(round(sensitivity_total[i]*100,3)),
 				   float(round(dice_total[i]*100,3)),float(round(ppv_total[i]*100,3))]
-			all_results[keyw].append([float(row[1]), float(row[2]), float(row[3]), float(row[4])])
+			all_results.append([float(row[1]), float(row[2]), float(row[3]), float(row[4])])
 			writer.writerow(row)
 
-		lidc_results = np.mean(np.array(all_results['lidc']),axis = 0)
-		exact09_results = np.mean(np.array(all_results['exact09']), axis = 0)
-
-		lidc_results2 = np.std(np.array(all_results['lidc']),axis = 0)
-		exact09_results2 = np.std(np.array(all_results['exact09']), axis = 0)
-
-		all_res_mean = np.mean(np.array(all_results['lidc']+all_results['exact09']),axis = 0)
-		all_res_std = np.std(np.array(all_results['lidc']+all_results['exact09']),axis = 0)
-
-		lidc_mean = ['lidc mean', lidc_results[0], lidc_results[1], lidc_results[2], lidc_results[3]]
-		lidc_std = ['lidc std', lidc_results2[0], lidc_results2[1], lidc_results2[2], lidc_results2[3]]
-
-		ex_mean = ['exact09 mean', exact09_results[0], exact09_results[1], exact09_results[2], exact09_results[3]]
-		ex_std = ['exact09 std', exact09_results2[0], exact09_results2[1], exact09_results2[2], exact09_results2[3]]
+		all_res_mean = np.mean(np.array(all_results),axis = 0)
+		all_res_std = np.std(np.array(all_results),axis = 0)
 
 		all_mean = ['all mean', all_res_mean[0], all_res_mean[1], all_res_mean[2], all_res_mean[3]]
 		all_std = ['all std', all_res_std[0], all_res_std[1], all_res_std[2], all_res_std[3]]
 
-		writer.writerow(lidc_mean)
-		writer.writerow(lidc_std)
-		writer.writerow(ex_mean)
-		writer.writerow(ex_std)
 		writer.writerow(all_mean)
 		writer.writerow(all_std)
 		csvout.close()
